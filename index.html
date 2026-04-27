@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Windows 用户管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", sans-serif; background: #f0f2f5; min-height: 100vh; }
+        
+        /* 登录页面 */
+        .login-container { display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .login-box { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); width: 380px; }
+        .login-box h1 { text-align: center; color: #1a73e8; margin-bottom: 30px; font-size: 24px; }
+        .login-box .logo { text-align: center; font-size: 48px; margin-bottom: 20px; }
+        
+        /* 主页面 */
+        .main-container { display: none; }
+        .header { background: #1a73e8; color: #fff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; }
+        .header .user-info { display: flex; align-items: center; gap: 15px; }
+        .header .badge { background: #34a853; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
+        .header .badge.admin { background: #fbbc04; color: #333; }
+        
+        .content { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        
+        .toolbar { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        
+        .card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        
+        /* 按钮样式 */
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary { background: #1a73e8; color: #fff; }
+        .btn-success { background: #34a853; color: #fff; }
+        .btn-danger { background: #ea4335; color: #fff; }
+        .btn-warning { background: #fbbc04; color: #333; }
+        .btn-secondary { background: #5f6368; color: #fff; }
+        
+        /* 表格 */
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid #e8eaed; }
+        th { background: #f8f9fa; font-weight: 600; color: #5f6368; font-size: 13px; }
+        tr:hover { background: #f8f9fa; }
+        
+        .status-locked { color: #ea4335; font-weight: 600; }
+        .status-active { color: #34a853; }
+        
+        /* 弹窗 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: #fff; padding: 28px; border-radius: 12px; width: 420px; animation: slideIn 0.2s; }
+        @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal h2 { margin-bottom: 20px; color: #202124; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: #5f6368; }
+        .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #dadce0; border-radius: 6px; font-size: 14px; transition: border 0.2s; }
+        .form-group input:focus { outline: none; border-color: #1a73e8; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        
+        /* 提示消息 */
+        .toast { position: fixed; top: 20px; right: 20px; padding: 14px 20px; border-radius: 8px; color: #fff; z-index: 2000; animation: slideInRight 0.3s; }
+        .toast.success { background: #34a853; }
+        .toast.error { background: #ea4335; }
+        @keyframes slideInRight { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        /* 权限说明 */
+        .permission-info { background: #e8f0fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1a73e8; }
+        .permission-info h3 { color: #1a73e8; margin-bottom: 10px; font-size: 16px; }
+        .permission-info ul { margin-left: 20px; color: #5f6368; }
+        .permission-info li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <!-- 登录页面 -->
+    <div id="loginPage" class="login-container">
+        <div class="login-box">
+            <div class="logo">🔐</div>
+            <h1>Windows 用户管理</h1>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="loginUsername" placeholder="请输入Windows用户名">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="loginPassword" placeholder="请输入Windows密码" onkeypress="if(event.key==='Enter')login()">
+            </div>
+            <button id="loginBtn" class="btn btn-primary" style="width:100%;padding:12px;">登 录</button>
+            <p style="text-align:center;margin-top:15px;color:#5f6368;font-size:13px;">请使用Windows账户登录</p>
+        </div>
+    </div>
+    
+    <!-- 主页面 -->
+    <div id="mainPage" class="main-container">
+        <div class="header">
+            <h1>🖥️ Windows 用户管理系统</h1>
+            <div class="user-info">
+                <span id="currentUser"></span>
+                <span id="userRole" class="badge"></span>
+                <button class="btn btn-secondary" onclick="logout()">退出</button>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- 权限说明 -->
+            <div id="permissionInfo" class="permission-info"></div>
+            
+            <!-- 管理员工具栏 -->
+            <div class="toolbar" id="toolbar">
+                <button class="btn btn-primary" onclick="showCreateModal()">+ 创建用户</button>
+                <button class="btn btn-success" onclick="loadUsers()">🔄 刷新</button>
+            </div>
+            
+            <!-- 普通用户个人信息卡片（仅在非管理员可见） -->
+            <div id="personalCard" class="card" style="display:none; margin-bottom:20px;">
+                <h3>我的账号信息</h3>
+                <p><strong>用户名：</strong> <span id="me_name"></span></p>
+                <p><strong>全名：</strong> <span id="me_fullname"></span></p>
+                <p><strong>备注：</strong> <span id="me_comment"></span></p>
+                <p><strong>状态：</strong> <span id="me_status"></span></p>
+                <div style="margin-top:10px;">
+                    <button class="btn btn-warning" onclick="showPasswordModal(currentUser)">修改我的密码</button>
+                </div>
+            </div>
+
+            <!-- 用户列表 -->
+            <div id="userListCard" class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>用户名</th>
+                            <th>全名</th>
+                            <th>备注</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 创建用户弹窗 -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <h2>创建新用户</h2>
+            <div class="form-group">
+                <label>用户名 *</label>
+                <input type="text" id="newUsername" placeholder="请输入用户名">
+            </div>
+            <div class="form-group">
+                <label>密码 *</label>
+                <input type="password" id="newPassword" placeholder="请输入初始密码">
+            </div>
+            <div class="form-group">
+                <label>全名</label>
+                <input type="text" id="newFullName" placeholder="请输入全名">
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <input type="text" id="newComment" placeholder="请输入备注">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideModal('createModal')">取消</button>
+                <button class="btn btn-primary" onclick="createUser()">创建</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 修改密码弹窗 -->
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <h2>修改密码</h2>
+            <p id="passwordTarget" style="color:#5f6368;margin-bottom:15px;"></p>
+            <div class="form-group" id="oldPwdGroup" style="display:none;">
+                <label>当前密码 *</label>
+                <input type="password" id="oldPwd" placeholder="请输入当前密码">
+            </div>
+            <div class="form-group">
+                <label>新密码 *</label>
+                <input type="password" id="newPwd" placeholder="请输入新密码">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideModal('passwordModal')">取消</button>
+                <button class="btn btn-primary" onclick="changePassword()">确认修改</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = '';
+        let isAdmin = false;
+        let targetUserForPwd = '';
+        
+        // 绑定登录按钮事件
+        document.getElementById('loginBtn').addEventListener('click', login);
+        
+        // 密码框回车登录
+        document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+        
+        // ============ 登录相关 ============
+        
+        async function login() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!username || !password) {
+                showToast('请输入用户名和密码', 'error');
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, password})
+                });
+                const result = await res.json();
+                
+                if (result.success) {
+                    currentUser = result.data.username;
+                    isAdmin = result.data.is_admin;
+                    showMainPage();
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (e) {
+                showToast('登录失败: ' + e, 'error');
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', {method: 'POST'});
+            currentUser = '';
+            isAdmin = false;
+            document.getElementById('loginPage').style.display = 'flex';
+            document.getElementById('mainPage').style.display = 'none';
+        }
+        
+        async function checkSession() {
+            try {
+                const res = await fetch('/api/current-user');
+                const result = await res.json();
+                if (result.success) {
+                    currentUser = result.data.username;
+                    isAdmin = result.data.is_admin;
+                    showMainPage();
+                }
+            } catch (e) {}
+        }
+        
+        function showMainPage() {
+            document.getElementById('loginPage').style.display = 'none';
+            document.getElementById('mainPage').style.display = 'block';
+            
+            // 显示用户信息
+            document.getElementById('currentUser').textContent = currentUser;
+            const roleBadge = document.getElementById('userRole');
+            roleBadge.textContent = isAdmin ? '管理员' : '普通用户';
+            roleBadge.className = 'badge' + (isAdmin ? ' admin' : '');
+            
+            // 显示权限说明
+            const permInfo = document.getElementById('permissionInfo');
+            if (isAdmin)
+            {
+                permInfo.innerHTML = `
+                    <h3>👑 管理员权限</h3>
+                    <ul>
+                        <li>可以查看所有用户列表、创建、删除及解锁账户</li>
+                    </ul>
+                `;
+                document.getElementById('toolbar').style.display = 'flex';
+                document.getElementById('personalCard').style.display = 'none';
+                document.getElementById('userListCard').style.display = 'block';
+                loadUsers();
+            } 
+            else 
+            {
+                permInfo.innerHTML = `
+                    <h3>👤 普通用户权限</h3>
+                    <ul>
+                        <li>仅可以修改自己的密码</li>
+                    </ul>
+                `;
+                document.getElementById('toolbar').style.display = 'none';
+                document.getElementById('userListCard').style.display = 'none';
+                // load current user's detailed info
+                    fetch(`/api/users/${currentUser}`)
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.success) {
+                                const d = res.data;
+                                document.getElementById('me_name').textContent = d.name || currentUser;
+                                document.getElementById('me_fullname').textContent = d.full_name || '-';
+                                document.getElementById('me_comment').textContent = d.comment || '-';
+                                let status = d.locked ? '<span class="status-locked">🔒 锁定</span>' : '<span class="status-active">✓ 正常</span>';
+                                if (d.disabled) status += ' | <span style="color:#999">已禁用</span>';
+                                document.getElementById('me_status').innerHTML = status;
+                                document.getElementById('personalCard').style.display = 'block';
+                            }
+                        })
+                        .catch(e => console.error('获取个人信息失败', e));
+            } // 结束 else 块
+        }
+        
+        // ============ 用户管理 ============
+        
+        async function loadUsers() {
+            if (!isAdmin) return;
+            
+            try {
+                const res = await fetch('/api/users');
+                const result = await res.json();
+                if (result.success) {
+                    renderTable(result.data);
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (e) {
+                showToast('加载失败: ' + e, 'error');
+            }
+        }
+        
+        function renderTable(users) {
+            const tbody = document.getElementById('userTable');
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td><strong>${u.name}</strong></td>
+                    <td>${u.full_name || '-'}</td>
+                    <td>${u.comment || '-'}</td>
+                    <td>
+                        ${u.locked ? '<span class="status-locked">🔒 锁定</span>' : '<span class="status-active">✓ 正常</span>'}
+                        ${u.disabled ? ' | <span style="color:#999">已禁用</span>' : ''}
+                    </td>
+                    <td>
+                        <button class="btn btn-warning" onclick="showPasswordModal('${u.name}')">改密</button>
+                        ${u.locked ? `<button class="btn btn-success" onclick="unlockUser('${u.name}')">解锁</button>` : ''}
+                        ${u.name !== currentUser ? `<button class="btn btn-danger" onclick="deleteUser('${u.name}')">删除</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        // ============ 弹窗操作 ============
+        
+        function showCreateModal() { document.getElementById('createModal').classList.add('show'); }
+        function showPasswordModal(user) { 
+            targetUserForPwd = user;
+            document.getElementById('passwordTarget').textContent = `目标用户: ${user}`;
+            // 如果是管理员修改别人的密码，不需要当前密码；否则显示当前密码输入
+            // 仅当为普通用户时要求输入当前密码
+            if (isAdmin && targetUserForPwd!==currentUser)
+            {
+                document.getElementById('oldPwdGroup').style.display = 'none';
+            }
+            else
+            {
+                document.getElementById('oldPwdGroup').style.display = 'block';
+            }
+            document.getElementById('passwordModal').classList.add('show'); 
+        }
+        function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+        
+        async function createUser() {
+            const data = {
+                username: document.getElementById('newUsername').value.trim(),
+                password: document.getElementById('newPassword').value,
+                full_name: document.getElementById('newFullName').value.trim(),
+                comment: document.getElementById('newComment').value.trim()
+            };
+            
+            if (!data.username || !data.password) {
+                showToast('用户名和密码不能为空', 'error');
+                return;
+            }
+            
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                hideModal('createModal');
+                loadUsers();
+                // 清空表单
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newPassword').value = '';
+                document.getElementById('newFullName').value = '';
+                document.getElementById('newComment').value = '';
+            }
+        }
+        
+        async function changePassword() {
+            const newPwd = document.getElementById('newPwd').value;
+            const oldPwd = document.getElementById('oldPwd').value;
+            if (!newPwd) {
+                showToast('请输入新密码', 'error');
+                return;
+            }
+            const payload = {username: targetUserForPwd, password: newPwd};
+            if (oldPwd) payload.old_password = oldPwd;
+            const res = await fetch('/api/password', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                hideModal('passwordModal');
+                document.getElementById('newPwd').value = '';
+                document.getElementById('oldPwd').value = '';
+            }
+        }
+        
+        async function unlockUser(username) {
+            if (!confirm(`确定要解锁用户 ${username} 吗？`)) return;
+            
+            const res = await fetch(`/api/users/${username}/unlock`, {method: 'POST'});
+            const result = await res.json();
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) loadUsers();
+        }
+        
+        async function deleteUser(username) {
+            if (!confirm(`确定要删除用户 ${username} 吗？此操作不可恢复！`)) return;
+            
+            const res = await fetch(`/api/users/${username}`, {method: 'DELETE'});
+            const result = await res.json();
+            showToast(result.message, result.success ? 'success' : 'error');
+            if (result.success) loadUsers();
+        }
+        
+        // ============ 工具函数 ============
+        
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
+        // 初始化检查
+        checkSession();
+    </script>
+</body>
+</html>
