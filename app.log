@@ -1,0 +1,8 @@
+2026-05-12 15:36:54,733 INFO [app:29] 日志初始化完成，写入日志文件: .\app.log
+2026-05-12 15:37:45,193 INFO [app:33] Request: method=GET path=/ user=anonymous ip=xxx.xxx.xxx.xxx
+2026-05-12 15:37:45,259 INFO [app:33] Request: method=GET path=/api/current-user user=anonymous ip=xxx.xxx.xxx.xxx
+2026-05-12 15:37:45,312 INFO [app:33] Request: method=GET path=/favicon.ico user=anonymous ip=xxx.xxx.xxx.xxx
+2026-05-12 15:38:02,192 INFO [app:33] Request: method=POST path=/api/login user=anonymous ip=xxx.xxx.xxx.xxx
+2026-05-12 15:38:02,193 INFO [app:33] Request: method=POST path=/api/login user=anonymous ip=xxx.xxx.xxx.xxx
+2026-05-12 15:38:02,193 INFO [app:107] Login attempt: username=UserName
+2026-05-12 15:38:02,193 INFO [app:107] Login attempt: username=UserName

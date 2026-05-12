@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session
+import logging
+from logging.handlers import RotatingFileHandler
 import win32net
 import win32netcon
 import win32security
@@ -13,6 +15,28 @@ app.secret_key = 'User@WIN11'
 CORS(app)
 
 SERVER = None
+LOG_FILE = os.path.join(os.path.dirname(__file__), 'app.log')
+
+if not os.path.exists(os.path.dirname(LOG_FILE)):
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+handler = RotatingFileHandler(LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')
+handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s [%(module)s:%(lineno)d] %(message)s'))
+handler.setLevel(logging.INFO)
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.INFO)
+app.logger.propagate = False
+app.logger.info('日志初始化完成，写入日志文件: %s', LOG_FILE)
+
+@app.before_request
+def log_request():
+    app.logger.info(
+        'Request: method=%s path=%s user=%s ip=%s',
+        request.method,
+        request.path,
+        session.get('username', 'anonymous'),
+        request.remote_addr,
+    )
 
 
 def is_admin_user(username):
@@ -30,6 +54,7 @@ def is_admin_user(username):
 
 def validate_windows_user(username, password):
     """验证Windows用户凭据"""
+    app.logger.info('Validate Windows credentials: username=%s', username)
     try:
         handle = win32security.LogonUser(
             username,
@@ -39,18 +64,22 @@ def validate_windows_user(username, password):
             win32security.LOGON32_PROVIDER_DEFAULT
         )
         handle.close()
+        app.logger.info('Validate Windows credentials succeeded: username=%s', username)
         return True
     except pywintypes.error:
+        app.logger.warning('Validate Windows credentials failed: username=%s', username)
         return False
-    except Exception:
+    except Exception as e:
+        app.logger.exception('Validate Windows credentials error: username=%s', username)
         return False
 
 
 def get_user_info(username):
     """获取用户详细信息"""
+    app.logger.info('Get user info: username=%s', username)
     try:
         info = win32net.NetUserGetInfo(SERVER, username, 3)
-        return {
+        result = {
             'name': info['name'],
             'full_name': info.get('full_name', ''),
             'comment': info.get('comment', ''),
@@ -58,7 +87,10 @@ def get_user_info(username):
             'disabled': bool(info['flags'] & win32netcon.UF_ACCOUNTDISABLE),
             'is_admin': is_admin_user(username)
         }
-    except:
+        app.logger.info('Get user info success: username=%s is_admin=%s', username, result['is_admin'])
+        return result
+    except Exception as e:
+        app.logger.exception('Get user info failed: username=%s', username)
         return None
 
 
@@ -72,19 +104,24 @@ def login():
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
+    app.logger.info('Login attempt: username=%s', username)
     
     if not username or not password:
+        app.logger.warning('Login failed: missing username or password')
         return jsonify({'success': False, 'message': '用户名和密码不能为空'}), 400
     
     if not validate_windows_user(username, password):
+        app.logger.warning('Login failed: invalid credentials for %s', username)
         return jsonify({'success': False, 'message': '用户名或密码错误'}), 401
     
     user_info = get_user_info(username)
     if not user_info:
+        app.logger.error('Login failed: 无法获取用户信息 username=%s', username)
         return jsonify({'success': False, 'message': '无法获取用户信息'}), 500
     
     session['username'] = username
     session['is_admin'] = user_info['is_admin']
+    app.logger.info('Login success: username=%s is_admin=%s', username, user_info['is_admin'])
     
     return jsonify({
         'success': True,
@@ -98,6 +135,7 @@ def login():
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
+    app.logger.info('Logout: username=%s', session.get('username', 'unknown'))
     session.clear()
     return jsonify({'success': True, 'message': '已退出登录'})
 
@@ -106,7 +144,7 @@ def logout():
 def get_current_user():
     if 'username' not in session:
         return jsonify({'success': False, 'message': '未登录'}), 401
-    
+    app.logger.info('Get current user: username=%s', session['username'])
     return jsonify({
         'success': True,
         'data': {
@@ -141,6 +179,8 @@ def admin_required(f):
 def list_users():
     if not session.get('is_admin'):
         return jsonify({'success': False, 'message': '权限不足'}), 403
+    admin = session['username']
+    app.logger.info('List users request by admin=%s', admin)
     
     try:
         users = []
@@ -159,20 +199,27 @@ def list_users():
                 })
             if resume == 0:
                 break
+        app.logger.info('List users success: admin=%s count=%d', admin, len(users))
         return jsonify({'success': True, 'data': users})
     except Exception as e:
+        app.logger.exception('List users failed: admin=%s', admin)
         return jsonify({'success': False, 'message': str(e)}), 400
 
 
 @app.route('/api/users/<username>', methods=['GET'])
 @login_required
 def get_user(username):
+    caller = session.get('username')
+    app.logger.info('Get user request: caller=%s target=%s', caller, username)
     # Allow admin or the user themself
-    if not session.get('is_admin') and username != session.get('username'):
+    if not session.get('is_admin') and username != caller:
+        app.logger.warning('Get user forbidden: caller=%s target=%s', caller, username)
         return jsonify({'success': False, 'message': '权限不足'}), 403
     info = get_user_info(username)
     if not info:
+        app.logger.error('Get user failed: cannot fetch info username=%s', username)
         return jsonify({'success': False, 'message': '无法获取用户信息'}), 404
+    app.logger.info('Get user success: caller=%s target=%s', caller, username)
     return jsonify({'success': True, 'data': info})
 
 
@@ -182,10 +229,12 @@ def create_user():
     data = request.json
     username = data.get('username') if data else None
     password = data.get('password') if data else None
+    admin = session.get('username', 'unknown')
+    app.logger.info('Create user attempt: admin=%s username=%s', admin, username)
     if not username or not password:
+        app.logger.warning('Create user failed: missing username or password admin=%s', admin)
         return jsonify({'success': False, 'message': '用户名和密码不能为空'}), 400
     try:
-        # Build USER_INFO_1 structure with required fields
         user_info = {
             'name': username,
             'password': password,
@@ -196,11 +245,15 @@ def create_user():
             'script_path': None,
             'password_age': 0,
         }
+        app.logger.info('Calling NetUserAdd: %s', {k: v for k, v in user_info.items() if k != 'password'})
         win32net.NetUserAdd(SERVER, 1, user_info)
+        app.logger.info('Create user success: admin=%s username=%s', admin, username)
         return jsonify({'success': True, 'message': f"用户 {username} 创建成功"})
     except pywintypes.error as e:
+        app.logger.exception('Create user pywintypes.error: admin=%s username=%s', admin, username)
         return jsonify({'success': False, 'message': str(e.args)}), 400
     except Exception as e:
+        app.logger.exception('Create user exception: admin=%s username=%s', admin, username)
         return jsonify({'success': False, 'message': str(e)}), 400
 
 
@@ -245,25 +298,34 @@ def change_password():
 @app.route('/api/users/<username>/unlock', methods=['POST'])
 @admin_required
 def unlock_user(username):
+    admin = session.get('username', 'unknown')
+    app.logger.info('Unlock user attempt: admin=%s username=%s', admin, username)
     try:
         user_info = win32net.NetUserGetInfo(SERVER, username, 3)
         user_info['flags'] = user_info['flags'] & ~win32netcon.UF_LOCKOUT
         win32net.NetUserSetInfo(SERVER, username, 3, user_info)
+        app.logger.info('Unlock user success: admin=%s username=%s', admin, username)
         return jsonify({'success': True, 'message': f"用户 {username} 已解锁"})
     except Exception as e:
+        app.logger.exception('Unlock user failed: admin=%s username=%s', admin, username)
         return jsonify({'success': False, 'message': str(e)}), 400
 
 
 @app.route('/api/users/<username>', methods=['DELETE'])
 @admin_required
 def delete_user(username):
+    admin = session.get('username', 'unknown')
+    app.logger.info('Delete user attempt: admin=%s username=%s', admin, username)
     if username == session['username']:
+        app.logger.warning('Delete user blocked: admin tried to delete current session user admin=%s username=%s', admin, username)
         return jsonify({'success': False, 'message': '不能删除当前登录用户'}), 400
     
     try:
         win32net.NetUserDel(SERVER, username)
+        app.logger.info('Delete user success: admin=%s username=%s', admin, username)
         return jsonify({'success': True, 'message': f"用户 {username} 已删除"})
     except Exception as e:
+        app.logger.exception('Delete user failed: admin=%s username=%s', admin, username)
         return jsonify({'success': False, 'message': str(e)}), 400
 
 
